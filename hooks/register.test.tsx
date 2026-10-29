@@ -40,11 +40,24 @@ const start = async ($: any, on: any, entries?: Record<string, unknown>) => {
   })
   on('command.register', (_: any, e: any) => ({ value: { command: e.name } }))
   on('tool.register', (_: any, e: any) => ({ value: { tool: `mcp__pins__${e.name}` } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const panes: string[] = []
+  on('ui.open', (_: any, e: any) => {
+    if (!panes.includes(e.id)) panes.push(e.id)
+
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_: any, e: any) => {
+    panes.splice(panes.indexOf(e.id), 1)
+
+    return { value: undefined }
+  })
+  on('ui.panes', () => ({
+    value: panes.map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })),
+  }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  return { stored, prompts, clock }
+  return { stored, prompts, clock, panes }
 }
 
 test('/pin with words hands them to the model', async ($, on) => {
@@ -55,18 +68,17 @@ test('/pin with words hands them to the model', async ($, on) => {
   expect(prompts).toEqual([])
 
   await clock.advance(1)
-  expect(prompts.length).toBe(1)
-  expect(prompts[0]).toMatch(/"\/pin the table"/)
+  expect(prompts).toEqual(['Pin: the table'])
 })
 
 test('the tool replaces a pin in place', async ($, on) => {
-  await start($, on)
+  const { stored } = await start($, on)
 
   await $.tool.call({ tool: 'mcp__pins__pin', text: 'first' })
   await $.tool.call({ tool: 'mcp__pins__pin', text: 'second' })
   const ran = await $.tool.call({ tool: 'mcp__pins__pin', text: 'FIRST', replace: 1 })
   expect(ran.result).toBe('Pin 1 updated.')
-  expect((await run($, 'pin', '')).text).toBe('1. FIRST\n2. second')
+  expect((stored.pins as { text: string }[]).map(pin => pin.text)).toEqual(['FIRST', 'second'])
 
   const missed = await $.tool.call({ tool: 'mcp__pins__pin', text: 'x', replace: 5 })
   expect(missed.deny).toMatch(/no pin 5/)
@@ -76,7 +88,6 @@ test('the tool pins a line and the pane draws it', async ($, on) => {
   const { stored } = await start($, on)
 
   await $.tool.call({ tool: 'mcp__pins__pin', text: 'buy milk' })
-  expect((await run($, 'pin', '')).text).toBe('1. buy milk')
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Markdown' }))?.text).toBe('buy milk')
@@ -88,18 +99,15 @@ test('the tool pins a line and the pane draws it', async ($, on) => {
 })
 
 test('the tool pins and /unpin removes by number', async ($, on) => {
-  await start($, on)
+  const { stored } = await start($, on)
 
   await $.tool.call({ tool: 'mcp__pins__pin', text: '- a\n- b' })
   await $.tool.call({ tool: 'mcp__pins__pin', text: 'second' })
-  expect((await run($, 'pin', '')).text).toBe(
-    '1. - a\n2. second',
-  )
+  const texts = () => (stored.pins as { text: string }[]).map(pin => pin.text)
+  expect(texts()).toEqual(['- a\n- b', 'second'])
 
-  expect((await run($, 'unpin', '1')).text).toBe(
-    'Unpinned - a.',
-  )
-  expect((await run($, 'pin', '')).text).toBe('1. second')
+  expect((await run($, 'unpin', '1')).text).toBe('Unpinned - a.')
+  expect(texts()).toEqual(['second'])
   expect((await run($, 'unpin', '9')).text).toBe('No pin 9.')
 })
 
@@ -109,6 +117,15 @@ test('pins stored by an earlier session come back', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Markdown' }))?.text).toBe('kept')
   await ui.unmount()
+})
+
+test('/pin alone shows the pane, then hides it', async ($, on) => {
+  const { panes } = await start($, on)
+
+  expect((await run($, 'pin', '')).text).toBe('Pins pane shown')
+  expect(panes).toEqual(['pins'])
+  expect((await run($, 'pin', '')).text).toBe('Pins pane hidden')
+  expect(panes).toEqual([])
 })
 
 test('an empty pane says so', async ($, on) => {
