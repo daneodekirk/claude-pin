@@ -1,0 +1,6 @@
+{
+  "name": "pins",
+  "version": "0.1.0",
+  "description": "Pin text, lists or notes to a side pane that stays beside the chat.",
+  "types": "./types/index.d.ts"
+}
