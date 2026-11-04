@@ -5,6 +5,17 @@ anything in markdown. Pins belong to the conversation: they stay until you
 remove them, and come back when you resume it. A setting, "Pins belong to"
 under /config, makes one list shared by every conversation instead.
 
+![A packing list pinned in the pane beside the chat](assets/claude-pin.png)
+
+## Motivation
+
+Long sessions bury things. A status summary, the open PRs, the plan agreed
+on twenty turns back: each scrolls out of view, and getting it back means
+scrolling up or asking Claude again. A pin keeps it beside the chat, and
+Claude updates it in place as the work moves.
+
+## Use
+
 - `/pin` shows or hides the pane.
 - `/pin <words>` asks Claude to pin something. "the table" pins the table it
   just wrote; "buy milk" pins those words.
