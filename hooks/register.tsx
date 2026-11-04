@@ -5,7 +5,8 @@ import type { Pin } from '../types'
 
 const PANE = 'pins'
 const TITLE = 'Pins'
-const STORE_KEY = 'pins'
+// Where pins are kept: one key per conversation, or one for all of them.
+let storeKey = 'pins'
 
 const pins = atom({ plugin: 'pins', key: 'pins' } as const, [], {
   shape: 'pins-1',
@@ -24,7 +25,7 @@ const isPinList = (value: unknown): value is Pin[] =>
 // Changes the list in session state and keeps the result across sessions.
 const change = async ($: EngineInterface, fn: (list: Pin[]) => Pin[]) => {
   const list = await update($, pins, fn)
-  await $.store.set(STORE_KEY, list)
+  await $.store.set(storeKey, list)
 
   return list
 }
@@ -67,9 +68,40 @@ const remove = async ($: EngineInterface, which: string) => {
 
 const open = ($: EngineInterface) => $.ui.open({ id: PANE, title: TITLE })
 
-export const register: Register = on => {
+// The pane body's width in cells, as last drawn; 0 until the pane has been
+// drawn. A module variable, not state: nothing drawn reads it, and a render
+// hook may not write state.
+let columns = 0
+
+// The widest line that cannot wrap: a table row or a line of fenced code.
+const widest = (text: string) => {
+  let isCode = false
+  let most = 0
+  for (const line of text.split('\n')) {
+    if (line.trimStart().startsWith('```')) {
+      isCode = !isCode
+      continue
+    }
+    if (isCode || line.trimStart().startsWith('|')) {
+      most = Math.max(most, Array.from(line).length)
+    }
+  }
+
+  return most
+}
+
+const sized = () => (columns > 0 ? ` The pane is ${columns} columns wide.` : '')
+
+// The first line of a pin, as a row of the transcript names it.
+const headline = (text: unknown) =>
+  typeof text === 'string' ? (text.trim().split('\n')[0] ?? '').trim() : ''
+
+export const register: Register = (on, options) => {
+  const isShared = options.scope === 'everywhere'
+
   on('session.start', async ($, e, next) => {
-    const stored = await $.store.get(STORE_KEY)
+    storeKey = isShared ? 'pins' : `pins:${await $.session.id()}`
+    const stored = await $.store.get(storeKey)
     if (isPinList(stored) && stored.length > 0) {
       await update($, pins, () => stored)
       void open($)
@@ -88,7 +120,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'pin',
       description:
-        'Pins text to the Pins pane beside the chat, where the user keeps lists and notes for the session. Call it once when the user asks to pin something, including a prompt of the form "Pin: <words>" (what /pin submits): if the words point at content in the conversation (a table, a list, an answer you gave), pin that content itself, verbatim, as markdown; otherwise pin the words as written, then reply in one short line. Markdown is rendered. To change a pin in place (edit a list, drop a row), pass `replace` with its number instead of unpinning and pinning again.',
+        'Pins text to the Pins pane beside the chat, where the user keeps lists and notes for this conversation. Call it once when the user asks to pin something, including a prompt of the form "Pin: <words>" (what /pin submits): if the words point at content in the conversation (a table, a list, an answer you gave), pin that content itself, verbatim, as markdown; otherwise pin the words as written, then reply in one short line. Markdown is rendered in a narrow pane, about a third of the terminal: write a pin as a list, not a table, and keep any table row or code line within the width the result reports, since a wider one is refused. To change a pin in place (edit a list, drop a row), pass `replace` with its number instead of unpinning and pinning again.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -168,18 +200,24 @@ export const register: Register = on => {
     if (text === '') {
       return { deny: 'pins: text is required.' }
     }
+    const wide = widest(text)
+    if (columns > 0 && wide > columns) {
+      return {
+        deny: `pins: the pane is ${columns} columns wide and a table or code row here is ${wide}. Rewrite it to fit, as a list rather than a table, and pin again.`,
+      }
+    }
     if (typeof e.replace === 'number') {
       const isDone = await replace($, e.replace, text)
       await open($)
 
       return isDone
-        ? { result: `Pin ${e.replace} updated.` }
+        ? { result: `Pin ${e.replace} updated.${sized()}` }
         : { deny: `pins: no pin ${e.replace}.` }
     }
     const list = await add($, text)
     await open($)
 
-    return { result: `Pinned as ${list.length}.` }
+    return { result: `Pinned as ${list.length}.${sized()}` }
   })
 
   on('tool.call', { tool: 'mcp__pins__unpin' }, async ($, e) => {
@@ -192,8 +230,39 @@ export const register: Register = on => {
     }
   })
 
+  // The transcript draws a tool call with its whole input, which for a pin is
+  // the pin itself, already in the pane: one line names it instead. Expanded
+  // (ctrl+o, --verbose) the engine's own row shows all.
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const { tool, input, isExpanded } = e.props
+    const isOurs = tool === 'mcp__pins__pin' || tool === 'mcp__pins__unpin'
+    if (!isOurs || isExpanded === true) {
+      return next(e)
+    }
+    const { Text } = $.ui.resolve(e)
+    const args = (typeof input === 'object' && input !== null ? input : {}) as {
+      text?: unknown
+      replace?: unknown
+      which?: unknown
+    }
+    const label =
+      tool === 'mcp__pins__unpin'
+        ? `Unpin ${typeof args.which === 'string' ? args.which : ''}`
+        : typeof args.replace === 'number'
+          ? `Pin ${args.replace}`
+          : 'Pin'
+
+    return (
+      <Text>
+        <Text bold>{label}</Text>
+        <Text dimColor> {headline(args.text)}</Text>
+      </Text>
+    )
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
+    columns = e.props.bodyColumns
     const list = await read($, pins)
 
     if (list.length === 0) {

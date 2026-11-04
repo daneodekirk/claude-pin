@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "pins",
+  "description": "The pins mod for Claude Code: a side pane for pinned lists and notes",
+  "owner": {
+    "name": "Dane Odekirk",
+    "url": "https://github.com/daneodekirk"
+  },
+  "plugins": [
+    {
+      "name": "pins",
+      "description": "Pin text, lists or notes to a side pane that stays beside the chat",
+      "version": "0.1.0",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

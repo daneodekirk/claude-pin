@@ -2,5 +2,17 @@
   "name": "pins",
   "version": "0.1.0",
   "description": "Pin text, lists or notes to a side pane that stays beside the chat.",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "scope": {
+      "type": "string",
+      "title": "Pins belong to",
+      "description": "\"conversation\": each conversation has its own pins, back when it is resumed. \"everywhere\": one list, shared by every conversation and project.",
+      "options": [
+        "conversation",
+        "everywhere"
+      ],
+      "default": "conversation"
+    }
+  }
 }

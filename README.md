@@ -1,7 +1,9 @@
 # Pins
 
 A pane beside the chat that holds whatever you pin: a list, a table, a note,
-anything in markdown. Pins stay until you remove them, across sessions.
+anything in markdown. Pins belong to the conversation: they stay until you
+remove them, and come back when you resume it. A setting, "Pins belong to"
+under /config, makes one list shared by every conversation instead.
 
 - `/pin` shows or hides the pane.
 - `/pin <words>` asks Claude to pin something. "the table" pins the table it
@@ -19,8 +21,8 @@ fullscreen; narrower, it sits above the prompt.
 Nothing goes to any service from the mod itself.
 
 **What it sends, and where.**
-- Pins stay on this machine, in Claude Code's plugin store, under the key
-  `pins`.
+- Pins stay on this machine, in Claude Code's plugin store, under one key per
+  conversation (`pins:<session id>`), or `pins` when shared.
 - `/pin <words>` submits one prompt to Claude in your place, `Pin: <words>`,
   through Claude Code's own request to Anthropic. It makes no new connection.
 - It sends nothing else, anywhere.
@@ -40,3 +42,6 @@ Nothing goes to any service from the mod itself.
 - `tool.call` for the mod's own `pin` and `unpin` tools: adds, replaces or
   removes a pin.
 - `ui.render` for the pane: draws each pin as markdown with an `x` button.
+- `ui.render` for the transcript row of the mod's own `pin` and `unpin` tool
+  calls: one line naming the pin, since the pane already shows it; ctrl+o
+  shows the full call.
